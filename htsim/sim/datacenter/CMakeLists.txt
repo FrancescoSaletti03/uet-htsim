@@ -3,6 +3,7 @@ set(LIB_SOURCES
     firstfit.cpp
     vl2_topology.cpp
     fat_tree_topology.cpp
+    fat_tree_topology_mg.cpp
     bcube_topology.cpp
     connection_matrix.cpp
     oversubscribed_fat_tree_topology.cpp
@@ -10,6 +11,7 @@ set(LIB_SOURCES
     multihomed_fat_tree_topology.cpp
     star_topology.cpp
     fat_tree_switch.cpp
+    fat_tree_switch_mg.cpp
     dragon_fly_topology.cpp
     generic_topology.cpp
 )
@@ -43,6 +45,8 @@ set_property(TARGET htsim_eqds PROPERTY EXCLUDE_FROM_ALL TRUE)
 
 add_executable(htsim_uec main_uec.cpp)
 
+add_executable(htsim_uec_mg main_uec_mg.cpp)
+
 # -------------------------------
 # Linking Executables with Libraries
 # -------------------------------
@@ -54,6 +58,7 @@ set (ALL_EXECUTABLES
     htsim_hpcc
     htsim_eqds
     htsim_uec
+    htsim_uec_mg
 )
 foreach(EXECUTABLE ${ALL_EXECUTABLES})
     # Link each executable with the 'htsim' library defined in the parent directory.
