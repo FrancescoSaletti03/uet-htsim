@@ -938,6 +938,7 @@ int main(int argc, char **argv) {
                             
             for (uint32_t p = 0; p < planes; p++) {
                 if(topo[p]->has_host_host_link(src, dest)) {
+                    printf("\n Using direct host<->host link for %d -> %d \n", src, dest);
                     // Costruisco la rotta diretta SRC->DST (una sola "hop": Queue -> Pipe -> Endpoint)
                     Route* src2dst = new Route();
                     src2dst->push_back(topo[p]->queues_host_host[src][dest][0]);

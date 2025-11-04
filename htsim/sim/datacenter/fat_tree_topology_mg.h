@@ -65,6 +65,7 @@ public:
     void check_consistency() const;
 
     void set_tier_parameters(int tier, int radix_up, int radix_down, mem_b queue_up, mem_b queue_down, int bundlesize, linkspeed_bps downlink_speed, int oversub);
+    void set_tier_parameters(int tier, int radix_up, int radix_down, mem_b queue_up, mem_b queue_down, int bundlesize, linkspeed_bps linkspeed, int oversub, linkspeed_bps host_downlink_speed);
 
     void set_ecn_parameters(bool enable_ecn, bool enable_on_tor_downlink, mem_b ecn_low, mem_b ecn_high){
         _enable_ecn = enable_ecn;
@@ -168,6 +169,7 @@ public:
     int get_oversubscription_ratio(){int ratio = _oversub[TOR_TIER]; if (_tiers>2) ratio *= _oversub[AGG_TIER]; return ratio;}
     simtime_picosec get_diameter_latency() {return _diameter_latency;}
     simtime_picosec get_two_point_diameter_latency(int src, int dst);
+    simtime_picosec get_two_point_diameter_latency(int src, int dst, bool use_host_latency);
 
     uint16_t get_diameter() {return _diameter;}
 private:
@@ -188,6 +190,7 @@ private:
 
     // _link_latencies[0] is the ToR->host latency.
     simtime_picosec _link_latencies[3];
+    simtime_picosec _host_link_latency;
 
     // _switch_latencies[0] is the ToR switch latency.
     simtime_picosec _switch_latencies[3];
@@ -204,6 +207,7 @@ private:
     // Eg. _downlink_speeds[0] = 400Gbps indicates 400Gbps links from hosts
     // to ToRs.
     linkspeed_bps _downlink_speeds[3];
+    linkspeed_bps _downlink_speed_host;
 
     // degree of oversubscription at tier.  Eg _oversub[TOR_TIER] = 3 implies 3x more bw to hosts than to agg switches.
     uint32_t _oversub[3];
@@ -278,6 +282,7 @@ public:
 
     BaseQueue* alloc_src_queue(QueueLogger* q);
     BaseQueue* alloc_queue(QueueLogger* q, const mem_b queuesize, link_direction dir, int switch_tier, bool tor=false);
+    BaseQueue* alloc_queue_host(QueueLogger* queueLogger, const mem_b queuesize, link_direction dir, bool tor);
     BaseQueue* alloc_queue(QueueLogger* q, linkspeed_bps speed, const mem_b queuesize, link_direction dir,  int switch_tier, bool tor, bool reduced_speed);
     void count_queue(Queue*);
     void print_path(std::ofstream& paths,uint32_t src,const Route* route);

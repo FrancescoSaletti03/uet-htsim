@@ -60,6 +60,8 @@ std::ostream &operator<<(std::ostream &os, FatTreeTopologyCfgMg const &m) {
             << " switch_latencies=" << m._switch_latencies[tier]
             << " bundlesize=" << m._bundlesize[tier]
             << " downlink_speeds=" << m._downlink_speeds[tier]
+            << " downlink_speed_host=" << m._downlink_speed_host
+            << " host_link_latency=" << m._host_link_latency
             << " oversub=" << m._oversub[tier]
             << " radix_down=" << m._radix_down[tier]
             << " queue_down=" << m._queue_down[tier];
@@ -90,6 +92,8 @@ FatTreeTopologyCfgMg::FatTreeTopologyCfgMg(queue_type q, queue_type snd):
                         _switch_latencies{0,0,0},
                         _bundlesize{1,1,1},
                         _downlink_speeds{0,0,0},
+                        _host_link_latency(0),
+                        _downlink_speed_host(0),
                         _oversub{1,1,1},
                         _radix_down{0,0,0},
                         _radix_up{0,0},
@@ -402,6 +406,23 @@ FatTreeTopologyCfgMg::set_tier_parameters(int tier, int radix_up, int radix_down
     // xxx what to do about queue sizes
 }
 
+void FatTreeTopologyCfgMg::set_tier_parameters(int tier, int radix_up, int radix_down, mem_b queue_up, mem_b queue_down, int bundlesize, linkspeed_bps linkspeed, int oversub, linkspeed_bps host_downlink_speed) {
+    // tier is 0 for ToR, 1 for agg switch, 2 for core switch
+    if (tier < CORE_TIER) {
+        // no uplinks from core switches
+        _radix_up[tier] = radix_up;
+        _queue_up[tier] = queue_up;
+    }
+    _radix_down[tier] = radix_down;
+    _queue_down[tier] = queue_down;
+    _bundlesize[tier] = bundlesize;
+    _downlink_speeds[tier] = linkspeed; // this is the link going downwards from this tier.  up/down linkspeeds are symmetric.
+    _oversub[tier] = oversub;
+    _downlink_speed_host = host_downlink_speed;
+    
+    // xxx what to do about queue sizes
+}
+
 void FatTreeTopologyCfgMg::set_linkspeeds(linkspeed_bps linkspeed) {
     if (linkspeed != 0 && _downlink_speeds[TOR_TIER] != 0 && linkspeed != _downlink_speeds[TOR_TIER]) {
         cerr << "Don't set linkspeeds using both the constructor and set_tier_parameters - use only one of the two\n";
@@ -415,6 +436,7 @@ void FatTreeTopologyCfgMg::set_linkspeeds(linkspeed_bps linkspeed) {
     if (_downlink_speeds[TOR_TIER] == 0) { _downlink_speeds[TOR_TIER] = linkspeed;}
     if (_downlink_speeds[AGG_TIER] == 0) { _downlink_speeds[AGG_TIER] = linkspeed;}
     if (_downlink_speeds[CORE_TIER] == 0) { _downlink_speeds[CORE_TIER] = linkspeed;}
+    if( _downlink_speed_host == 0) { _downlink_speed_host = linkspeed;}
 }
 
 void FatTreeTopologyCfgMg::set_queue_sizes(mem_b queuesize) {
@@ -553,6 +575,11 @@ simtime_picosec FatTreeTopologyCfgMg::get_two_point_diameter_latency(int src, in
     return diameter_latency_end_point;
 }
 
+simtime_picosec FatTreeTopologyCfgMg::get_two_point_diameter_latency(int src, int dst, bool use_host_latency) {
+
+    return use_host_latency ? _host_link_latency : get_two_point_diameter_latency(src, dst);
+}
+
 unique_ptr<FatTreeTopologyCfgMg> FatTreeTopologyCfgMg::load(string filename,
                                                         mem_b queuesize,
                                                         queue_type q_type,
@@ -632,7 +659,25 @@ void FatTreeTopologyCfgMg::read_cfg(istream& file, mem_b queuesize) {
         to_lower(tokens[0]);
         if (tokens.size() == 0 || tokens[0][0] == '#') {
             continue;
-        } else if (tokens[0] == "tier") {
+        } 
+        else if(tokens[0] == "hosts"){
+            continue;
+        }
+        else if (tokens[0] == "downlink_speed_host_gbps") {
+            if (_downlink_speed_host != 0) {
+                cerr << "Duplicate linkspeed setting for host at line " << linecount << endl;
+                exit(1);
+            }
+            _downlink_speed_host = ((linkspeed_bps)stoi(tokens[1])) * 1000000000;
+        }
+        else if (tokens[0] == "downlink_latency_host_ns") {
+            if (_host_link_latency != 0) {
+                cerr << "Duplicate link latency setting for host at line " << linecount << endl;
+                exit(1);
+            }
+            _host_link_latency = timeFromNs(stoi(tokens[1]));
+        }
+        else if (tokens[0] == "tier") {
             current_tier = stoi(tokens[1]);
             if (current_tier < 0 || current_tier > 2) {
                 cerr << "Invalid tier " << current_tier << " at line " << linecount << endl;
@@ -741,6 +786,14 @@ void FatTreeTopologyCfgMg::check_consistency() const {
     for (uint32_t tier = 0; tier < _tiers; tier++) {
         if (_downlink_speeds[tier] == 0) {
             cerr << "Missing downlink_speed_gbps for tier " << tier << endl;
+            exit(1);
+        }
+        if(_downlink_speed_host == 0){
+            cerr << "Missing downlink_speed_gbps for host" << endl;
+            exit(1);
+        }
+        if(_host_link_latency == 0){
+            cerr << "Missing downlink_latency_ns for host" << endl;
             exit(1);
         }
         if (_link_latencies[tier] == 0) {
@@ -864,10 +917,13 @@ FatTreeTopologyMg::FatTreeTopologyMg(const FatTreeTopologyCfgMg* cfg,
                         queueLogger = NULL;
                     }
                 
-                    queues_host_host[hsrc][hdst][b] = alloc_queue(queueLogger, _cfg->_queue_down[TOR_TIER], DOWNLINK, TOR_TIER, true);
+                    queues_host_host[hsrc][hdst][b] = alloc_queue_host(queueLogger, _cfg -> _downlink_speed_host, DOWNLINK, true);
+                    //queues_host_host[hsrc][hdst][b] = alloc_queue(queueLogger, _cfg -> _queue_down[TOR_TIER], DOWNLINK, TOR_TIER, true);
                     queues_host_host[hsrc][hdst][b]->setName("H" + ntoa(hsrc) + "->H" +ntoa(hdst) + "(" + ntoa(b) + ")");
                     //if (logfile) logfile->writeName(*(queues_nlp_ns[tor][srv]));
-                    simtime_picosec hop_latency = (_cfg->_hop_latency == 0) ? _cfg->_link_latencies[TOR_TIER] : _cfg->_hop_latency;
+
+                    simtime_picosec hop_latency = (_cfg->_hop_latency == 0) ? _cfg -> _host_link_latency : _cfg->_hop_latency;
+                    //simtime_picosec hop_latency = (_cfg->_hop_latency == 0) ? _cfg -> _link_latencies[TOR_TIER] : _cfg->_hop_latency;
                     pipes_host_host[hsrc][hdst][b] = new Pipe(hop_latency, *_eventlist);
                     pipes_host_host[hsrc][hdst][b]->setName("Pipe-H" + ntoa(hsrc)  + "->H" + ntoa(hdst) + "(" + ntoa(b) + ")");
                     //if (logfile) logfile->writeName(*(pipes_nlp_ns[tor][srv]));
@@ -1204,6 +1260,10 @@ BaseQueue* FatTreeTopologyMg::alloc_src_queue(QueueLogger* queueLogger){
     default:
         abort();
     }
+}
+BaseQueue* FatTreeTopologyMg::alloc_queue_host(QueueLogger* queueLogger, const mem_b queuesize,
+                                        link_direction dir, bool tor){
+    return alloc_queue(queueLogger, _cfg->_downlink_speed_host, queuesize, dir, TOR_TIER, tor, false);
 }
 
 BaseQueue* FatTreeTopologyMg::alloc_queue(QueueLogger* queueLogger, const mem_b queuesize,
