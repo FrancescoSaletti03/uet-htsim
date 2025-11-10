@@ -1,6 +1,6 @@
 // -*- c-basic-offset: 4; indent-tabs-mode: nil -*-
-#ifndef FAT_TREE
-#define FAT_TREE
+#ifndef SH_FAT_TREE
+#define SH_FAT_TREE
 #include "main.h"
 #include "randomqueue.h"
 #include "pipe.h"
@@ -12,6 +12,7 @@
 #include "logfile.h"
 #include "eventlist.h"
 #include "switch.h"
+#include "fat_tree_switch_sh.h"
 #include <ostream>
 #include <memory>
 #include <optional>
@@ -31,27 +32,27 @@ typedef enum {UPLINK, DOWNLINK} link_direction;
 #define AGG_TIER 1
 #define CORE_TIER 2
 
-class FatTreeTopology;
+class FatTreeTopologySh;
 
 
-class FatTreeTopologyCfg {
-friend class FatTreeTopology;
-friend std::ostream &operator<<(std::ostream &os, FatTreeTopologyCfg const &m);
+class FatTreeTopologyCfgSh {
+friend class FatTreeTopologySh;
+friend std::ostream &operator<<(std::ostream &os, FatTreeTopologyCfgSh const &m);
 public:
-    FatTreeTopologyCfg(queue_type q, queue_type snd);
-    FatTreeTopologyCfg(istream& file, mem_b queue_size,
+    FatTreeTopologyCfgSh(queue_type q, queue_type snd);
+    FatTreeTopologyCfgSh(istream& file, mem_b queue_size,
                        queue_type q, queue_type snd);
-    FatTreeTopologyCfg(uint32_t tiers, uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize, 
+    FatTreeTopologyCfgSh(uint32_t tiers, uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize, 
                        simtime_picosec latency, simtime_picosec switch_latency, 
                        queue_type q, queue_type snd);
-    FatTreeTopologyCfg(uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize,
+    FatTreeTopologyCfgSh(uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize,
                        queue_type q);      
-    FatTreeTopologyCfg(uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize,
+    FatTreeTopologyCfgSh(uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize,
                        queue_type q, uint32_t num_failed);      
-    FatTreeTopologyCfg(uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize, uint32_t fail,
+    FatTreeTopologyCfgSh(uint32_t no_of_nodes, linkspeed_bps linkspeed, mem_b queuesize, uint32_t fail,
                        queue_type q, queue_type snd);
 
-    static unique_ptr<FatTreeTopologyCfg> load(string filename, mem_b queuesize, queue_type q_type, queue_type sender_q_type);
+    static unique_ptr<FatTreeTopologyCfgSh> load(string filename, mem_b queuesize, queue_type q_type, queue_type sender_q_type);
     /*
      Check if all settings in the config are correct. Will abort and print an error message if not.
     */
@@ -231,17 +232,19 @@ private:
 
 template<class P> void delete_3d_vector(vector<vector<vector<P*>>>& vec3d);
 
-class FatTreeTopology: public Topology{
+class FatTreeTopologySh: public Topology{
 public:
-    FatTreeTopology(const FatTreeTopologyCfg* cfg,
+    FatTreeTopologySh(const FatTreeTopologyCfgSh* cfg,
                     QueueLoggerFactory* logger_factory,
                     EventList* ev,
                     FirstFit * fit);
-    ~FatTreeTopology() override;
+    ~FatTreeTopologySh() override;
 
     vector <Switch*> switches_lp;
     vector <Switch*> switches_up;
     vector <Switch*> switches_c;
+
+    vector<Switch*> switches_host;
 
     // 3rd index is link number in bundle
     vector< vector< vector<Pipe*> > > pipes_nc_nup;
@@ -257,6 +260,12 @@ public:
     vector< vector< vector<BaseQueue*> > > queues_nup_nc;
     vector< vector< vector<BaseQueue*> > > queues_nlp_nup;
     vector< vector< vector<BaseQueue*> > > queues_ns_nlp;
+
+    // Collegamenti Host - HostSwitch
+    vector< vector< vector<Pipe*> > > pipes_nhs_nh;
+    vector< vector< vector<Pipe*> > > pipes_nh_nhs;
+    vector< vector< vector<BaseQueue*> > > queues_nhs_nh;
+    vector< vector< vector<BaseQueue*> > > queues_nh_nhs;
   
     QueueLoggerFactory* _logger_factory;
     EventList* _eventlist;
@@ -276,15 +285,16 @@ public:
     // add loggers to record total queue size at switches
     virtual void add_switch_loggers(Logfile& log, simtime_picosec sample_period); 
 
-    const FatTreeTopologyCfg& cfg() { return *_cfg; };
+    const FatTreeTopologyCfgSh& cfg() { return *_cfg; };
 private:
-    const FatTreeTopologyCfg* _cfg;
+    const FatTreeTopologyCfgSh* _cfg;
     map<Queue*,int> _link_usage;
     int64_t find_lp_switch(Queue* queue);
     int64_t find_up_switch(Queue* queue);
     int64_t find_core_switch(Queue* queue);
     int64_t find_destination(Queue* queue);
     void alloc_vectors();
-};
 
+    static const uint32_t HOSTSWITCH_GPU_SIZE = 72;
+};
 #endif

@@ -25,8 +25,8 @@
 #include "oversubscribed_cc.h"
 
 
-#include "fat_tree_topology.h"
-#include "fat_tree_switch.h"
+#include "fat_tree_topology_sh.h"
+#include "fat_tree_switch_sh.h"
 
 #include <list>
 
@@ -48,7 +48,7 @@ void exit_error(char* progr) {
     exit(1);
 }
 
-simtime_picosec calculate_rtt(FatTreeTopologyCfg* t_cfg, linkspeed_bps host_linkspeed) { 
+simtime_picosec calculate_rtt(FatTreeTopologyCfgSh* t_cfg, linkspeed_bps host_linkspeed) { 
     /*
     Using the host linkspeed here is not very accurate, but hopefully good enough for this usecase.
     */
@@ -59,7 +59,7 @@ simtime_picosec calculate_rtt(FatTreeTopologyCfg* t_cfg, linkspeed_bps host_link
     return rtt;
 };
 
-uint32_t calculate_bdp_pkt(FatTreeTopologyCfg* t_cfg, linkspeed_bps host_linkspeed) {
+uint32_t calculate_bdp_pkt(FatTreeTopologyCfgSh* t_cfg, linkspeed_bps host_linkspeed) {
     simtime_picosec rtt = calculate_rtt(t_cfg, host_linkspeed);
     uint32_t bdp_pkt = ceil((timeAsSec(rtt) * (host_linkspeed/8)) / (double)Packet::data_packet_size()); 
 
@@ -125,7 +125,7 @@ int main(int argc, char **argv) {
     queue_type snd_type = FAIR_PRIO;
 
     float ar_sticky_delta = 10;
-    FatTreeSwitch::sticky_choices ar_sticky = FatTreeSwitch::PER_PACKET;
+    FatTreeSwitchSh::sticky_choices ar_sticky = FatTreeSwitchSh::PER_PACKET;
 
     char* tm_file = NULL;
     char* topo_file = NULL;
@@ -425,9 +425,9 @@ int main(int argc, char **argv) {
             i++;
         } else if (!strcmp(argv[i],"-ar_granularity")){
             if (!strcmp(argv[i+1],"packet"))
-                ar_sticky = FatTreeSwitch::PER_PACKET;
+                ar_sticky = FatTreeSwitchSh::PER_PACKET;
             else if (!strcmp(argv[i+1],"flow"))
-                ar_sticky = FatTreeSwitch::PER_FLOWLET;
+                ar_sticky = FatTreeSwitchSh::PER_FLOWLET;
             else  {
                 cout << "Expecting -ar_granularity packet|flow, found " << argv[i+1] << endl;
                 exit(1);
@@ -436,31 +436,31 @@ int main(int argc, char **argv) {
         } else if (!strcmp(argv[i],"-ar_method")){
             if (!strcmp(argv[i+1],"pause")){
                 cout << "Adaptive routing based on pause state " << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_pause;
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_pause;
             }
             else if (!strcmp(argv[i+1],"queue")){
                 cout << "Adaptive routing based on queue size " << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_queuesize;
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_queuesize;
             }
             else if (!strcmp(argv[i+1],"bandwidth")){
                 cout << "Adaptive routing based on bandwidth utilization " << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_bandwidth;
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_bandwidth;
             }
             else if (!strcmp(argv[i+1],"pqb")){
                 cout << "Adaptive routing based on pause, queuesize and bandwidth utilization " << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_pqb;
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_pqb;
             }
             else if (!strcmp(argv[i+1],"pq")){
                 cout << "Adaptive routing based on pause, queuesize" << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_pq;
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_pq;
             }
             else if (!strcmp(argv[i+1],"pb")){
                 cout << "Adaptive routing based on pause, bandwidth utilization" << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_pb;
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_pb;
             }
             else if (!strcmp(argv[i+1],"qb")){
                 cout << "Adaptive routing based on queuesize, bandwidth utilization" << endl;
-                FatTreeSwitch::fn = &FatTreeSwitch::compare_qb; 
+                FatTreeSwitchSh::fn = &FatTreeSwitchSh::compare_qb; 
             }
             else {
                 cout << "Unknown AR method expecting one of pause, queue, bandwidth, pqb, pq, pb, qb" << endl;
@@ -470,31 +470,31 @@ int main(int argc, char **argv) {
         } else if (!strcmp(argv[i],"-strat")){
             if (!strcmp(argv[i+1], "ecmp_host")) {
                 route_strategy = ECMP_FIB;
-                FatTreeSwitch::set_strategy(FatTreeSwitch::ECMP);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::ECMP);
             } else if (!strcmp(argv[i+1], "rr_ecmp")) {
                 //this is the host route strategy;
                 route_strategy = ECMP_FIB_ECN;
                 qt = COMPOSITE_ECN_LB;
                 //this is the switch route strategy. 
-                FatTreeSwitch::set_strategy(FatTreeSwitch::RR_ECMP);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::RR_ECMP);
             } else if (!strcmp(argv[i+1], "ecmp_host_ecn")) {
                 route_strategy = ECMP_FIB_ECN;
-                FatTreeSwitch::set_strategy(FatTreeSwitch::ECMP);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::ECMP);
                 qt = COMPOSITE_ECN_LB;
             } else if (!strcmp(argv[i+1], "reactive_ecn")) {
                 // Jitu's suggestion for something really simple
                 // One path at a time, but switch whenever we get a trim or ecn
                 //this is the host route strategy;
                 route_strategy = REACTIVE_ECN;
-                FatTreeSwitch::set_strategy(FatTreeSwitch::ECMP);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::ECMP);
                 qt = COMPOSITE_ECN_LB;
             } else if (!strcmp(argv[i+1], "ecmp_ar")) {
                 route_strategy = ECMP_FIB;
                 path_entropy_size = 1;
-                FatTreeSwitch::set_strategy(FatTreeSwitch::ADAPTIVE_ROUTING);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::ADAPTIVE_ROUTING);
             } else if (!strcmp(argv[i+1], "ecmp_host_ar")) {
                 route_strategy = ECMP_FIB;
-                FatTreeSwitch::set_strategy(FatTreeSwitch::ECMP_ADAPTIVE);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::ECMP_ADAPTIVE);
                 //the stuff below obsolete
                 //FatTreeSwitch::set_ar_fraction(atoi(argv[i+2]));
                 //cout << "AR fraction: " << atoi(argv[i+2]) << endl;
@@ -503,7 +503,7 @@ int main(int argc, char **argv) {
                 // switch round robin
                 route_strategy = ECMP_FIB;
                 path_entropy_size = 1;
-                FatTreeSwitch::set_strategy(FatTreeSwitch::RR);
+                FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::RR);
             }
             i++;
         } else {
@@ -533,18 +533,18 @@ int main(int argc, char **argv) {
 
     if (route_strategy==NOT_SET){
         route_strategy = ECMP_FIB;
-        FatTreeSwitch::set_strategy(FatTreeSwitch::ECMP);
+        FatTreeSwitchSh::set_strategy(FatTreeSwitchSh::ECMP);
     }
 
     /*
     UecSink::_oversubscribed_congestion_control = oversubscribed_congestion_control;
     */
 
-    FatTreeSwitch::_ar_sticky = ar_sticky;
-    FatTreeSwitch::_sticky_delta = timeFromUs(ar_sticky_delta);
-    FatTreeSwitch::_ecn_threshold_fraction = ecn_thresh;
-    FatTreeSwitch::_disable_trim = disable_trim;
-    FatTreeSwitch::_trim_size = trimsize;
+    FatTreeSwitchSh::_ar_sticky = ar_sticky;
+    FatTreeSwitchSh::_sticky_delta = timeFromUs(ar_sticky_delta);
+    FatTreeSwitchSh::_ecn_threshold_fraction = ecn_thresh;
+    FatTreeSwitchSh::_disable_trim = disable_trim;
+    FatTreeSwitchSh::_trim_size = trimsize;
 
     eventlist.setEndtime(timeFromUs((uint32_t)end_time));
 
@@ -654,9 +654,9 @@ int main(int argc, char **argv) {
              << endl;
     }
 
-    unique_ptr<FatTreeTopologyCfg> topo_cfg;
+    unique_ptr<FatTreeTopologyCfgSh> topo_cfg;
     if (topo_file) {
-        topo_cfg = FatTreeTopologyCfg::load(topo_file, memFromPkt(queuesize_pkt), qt, snd_type);
+        topo_cfg = FatTreeTopologyCfgSh::load(topo_file, memFromPkt(queuesize_pkt), qt, snd_type);
 
         if (topo_cfg->no_of_nodes() != no_of_nodes) {
             cerr << "Mismatch between connection matrix (" << no_of_nodes << " nodes) and topology ("
@@ -664,7 +664,7 @@ int main(int argc, char **argv) {
             exit(1);
         }
     } else {
-        topo_cfg = make_unique<FatTreeTopologyCfg>(tiers, no_of_nodes, linkspeed, memFromPkt(queuesize_pkt),
+        topo_cfg = make_unique<FatTreeTopologyCfgSh>(tiers, no_of_nodes, linkspeed, memFromPkt(queuesize_pkt),
                                                    hop_latency, switch_latency, 
                                                    qt, snd_type);
     }
@@ -712,10 +712,10 @@ int main(int argc, char **argv) {
 
     cout << *topo_cfg << endl;
 
-    vector<unique_ptr<FatTreeTopology>> topo;
+    vector<unique_ptr<FatTreeTopologySh>> topo;
     topo.resize(planes);
     for (uint32_t p = 0; p < planes; p++) {
-        topo[p] = make_unique<FatTreeTopology>(topo_cfg.get(), qlf, &eventlist, nullptr);
+        topo[p] = make_unique<FatTreeTopologySh>(topo_cfg.get(), qlf, &eventlist, nullptr);
 
         if (log_switches) {
             topo[p]->add_switch_loggers(logfile, logtime);
@@ -932,6 +932,7 @@ int main(int argc, char **argv) {
                     msg->setTrigger(UecMsg::MsgStatus::RecvdLast, trig);
                 }
             }
+
 
             //uec_snk->set_priority(crt->priority);
                             
