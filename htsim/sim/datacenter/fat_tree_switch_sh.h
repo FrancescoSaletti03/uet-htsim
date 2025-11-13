@@ -86,7 +86,7 @@ public:
 class FatTreeSwitchSh : public Switch {
 public:
     enum switch_type {
-        NONE = 0, TOR = 1, AGG = 2, CORE = 3
+        NONE = 0, TOR = 1, AGG = 2, CORE = 3, SUPER = 4
     };
 
     enum routing_strategy {
@@ -120,6 +120,7 @@ public:
     static int8_t (*fn)(FibEntry*,FibEntry*);
 
     virtual void addHostPort(int addr, int flowid, PacketSink* transport_port);
+    virtual void addHostPortPlus(int addr, int flowid, PacketSink* transport_port);
 
     virtual void permute_paths(vector<FibEntry*>* uproutes);
 

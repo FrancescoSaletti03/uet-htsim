@@ -849,8 +849,63 @@ FatTreeTopologySh::FatTreeTopologySh(const FatTreeTopologyCfgSh* cfg,
         switches_c[j] = new FatTreeSwitchSh(*_eventlist, "Switch_Core_"+ntoa(j), FatTreeSwitchSh::CORE,j,switch_latency,this);
     }
     for (uint32_t j=0;j<NSH;j++){
-        simtime_picosec switch_latency = (_cfg->_switch_latencies[CORE_TIER] > 0) ? _cfg->_switch_latencies[CORE_TIER] : _cfg->_switch_latency;
-        switches_host[j] = new FatTreeSwitchSh(*_eventlist, "Switch_HOST_"+ntoa(j), FatTreeSwitchSh::TOR,j,switch_latency/2,this);
+        simtime_picosec switch_latency = (_cfg->_switch_latencies[CORE_TIER] > 0) ? _cfg->_switch_latencies[TOR_TIER] : _cfg->_switch_latency;
+        switches_host[j] = new FatTreeSwitchSh(*_eventlist, "Switch_HOST_"+ntoa(j), FatTreeSwitchSh::SUPER,j,switch_latency/2,this);
+    }
+  
+    
+    /* host_transport_ports.resize(_cfg->_no_of_nodes);
+    for (uint32_t h = 0; h < _cfg->_no_of_nodes; h++) {
+    if (host_transport_ports[h] == nullptr)
+        host_transport_ports[h] = new UecSink();
+    } */
+
+    for (uint32_t h=0;h<_cfg->NSRV; h++) {
+        uint32_t sr = h / HOSTSWITCH_GPU_SIZE;
+        for (uint32_t b = 0; b < _cfg->_bundlesize[TOR_TIER]; b++) {
+            // Downlink
+            if (_logger_factory) {
+                queueLogger = _logger_factory->createQueueLogger();
+            } else {
+                queueLogger = NULL;
+            }
+        
+            queues_nhs_nh[sr][h][b] = alloc_queue(queueLogger,_cfg->_downlink_speeds[TOR_TIER] * 2, _cfg->_queue_down[TOR_TIER] * 2, DOWNLINK, TOR_TIER, true, false);
+            queues_nhs_nh[sr][h][b]->setName("HSRC" + ntoa(sr) + "->DST" +ntoa(h) + "(" + ntoa(b) + ")");
+            //if (logfile) logfile->writeName(*(queues_nh_nhs[h][sr]));
+            simtime_picosec hop_latency = (_cfg->_hop_latency == 0) ? _cfg->_link_latencies[TOR_TIER] : _cfg->_hop_latency;
+            pipes_nhs_nh[sr][h][b] = new Pipe(hop_latency, *_eventlist);
+            pipes_nhs_nh[sr][h][b]->setName("Pipe-HSRC" + ntoa(sr) + "->DST" + ntoa(h) + "(" + ntoa(b) + ")");
+            //if (logfile) logfile->writeName(*(pipes_nh_nhs[h][sr]));
+        
+            // Uplink
+            if (_logger_factory) {
+                queueLogger = _logger_factory->createQueueLogger();
+            } else {
+                queueLogger = NULL;
+            }
+            queues_nh_nhs[h][sr][b] = alloc_src_queue(queueLogger);
+            queues_nh_nhs[h][sr][b]->setName("DST" + ntoa(h) + "->HSRC" +ntoa(sr) + "(" + ntoa(b) + ")");
+            //cout << queues_nhs_nh[sr][h][b]->str() << endl;
+            //if (logfile) logfile->writeName(*(queues_nhs_nh[sr][h]));
+
+            queues_nh_nhs[h][sr][b]->setRemoteEndpoint(switches_host[sr]);
+
+            assert(switches_host[sr]->addPort(queues_nhs_nh[sr][h][b]) < 96);
+
+            if (cfg->_qt==LOSSLESS_INPUT || cfg->_qt == LOSSLESS_INPUT_ECN){
+                //no virtual queue needed at server
+                new LosslessInputQueue(*_eventlist, queues_nhs_nh[sr][h][b], switches_host[sr], hop_latency);
+            }
+
+            pipes_nh_nhs[h][sr][b] = new Pipe(hop_latency, *_eventlist);
+            pipes_nh_nhs[h][sr][b]->setName("Pipe-DST" + ntoa(h)  + "->HSRC" + ntoa(sr) + "(" + ntoa(b) + ")");
+            //if (logfile) logfile->writeName(*(pipes_nh_nhs[h][sr][b]));
+            if (_ff){
+                _ff->add_queue(queues_nhs_nh[sr][h][b]);
+                _ff->add_queue(queues_nh_nhs[h][sr][b]);
+            }
+        }
     }
 
       
@@ -1315,7 +1370,41 @@ vector<const Route*>* FatTreeTopologySh::get_bidir_paths(uint32_t src, uint32_t 
     //Queue* pqueue = new Queue(_linkspeed, memFromPkt(FEEDER_BUFFER), *_eventlist, simplequeuelogger);
     //pqueue->setName("PQueue_" + ntoa(src) + "_" + ntoa(dest));
     //logfile->writeName(*pqueue);
-    if (_cfg->HOST_POD_SWITCH(src)==_cfg->HOST_POD_SWITCH(dest)){
+
+    if (HOSTSWITCH_ID(src) == HOSTSWITCH_ID(dest) && src != dest) {
+        uint32_t sr = HOSTSWITCH_ID(src);
+
+        // forward: SRC -> SR -> DST
+        routeout = new Route();
+        routeout->push_back(queues_nh_nhs[src][sr][0]);
+        routeout->push_back(pipes_nh_nhs[src][sr][0]);
+
+        assert(switches_host[sr] != nullptr && "SR switch is null");
+        routeout->push_back(switches_host[sr]); // pass through host switch
+
+        routeout->push_back(queues_nhs_nh[sr][dest][0]);
+        routeout->push_back(pipes_nhs_nh[sr][dest][0]);
+
+        if (reverse) {
+            // reverse: DST -> SR -> SRC  (per pacchetti RTS/ACK simmetrici)
+            routeback = new Route();
+            routeback->push_back(queues_nh_nhs[dest][sr][0]);
+            routeback->push_back(pipes_nh_nhs[dest][sr][0]);
+            
+            assert(switches_host[sr] != nullptr && "SR switch is null");
+            routeout->push_back(switches_host[sr]); // pass through host switch
+
+            routeback->push_back(queues_nhs_nh[sr][src][0]);
+            routeback->push_back(pipes_nhs_nh[sr][src][0]);
+            routeout->set_reverse(routeback);
+            routeback->set_reverse(routeout);
+        }
+        paths->push_back(routeout);
+        check_non_null(routeout);
+        return paths;
+    }
+
+    else if (_cfg->HOST_POD_SWITCH(src)==_cfg->HOST_POD_SWITCH(dest)){
   
         // forward path
         routeout = new Route();
@@ -1657,4 +1746,11 @@ void FatTreeTopologySh::add_switch_loggers(Logfile& log, simtime_picosec sample_
              ; i++) {
         switches_c[i]->add_logger(log, sample_period);
     }
+    for( uint32_t i = 0; i < switches_host.size(); i++) {
+        switches_host[i]->add_logger(log, sample_period);
+    }
+}
+
+bool FatTreeTopologySh::isOnSameEnhancedSwitch(uint32_t src, uint32_t dst) const {
+    return HOSTSWITCH_ID(src) == HOSTSWITCH_ID(dst);
 }

@@ -512,6 +512,7 @@ int main(int argc, char **argv) {
         }
         i++;
     }
+    // end arg pars
 
     if (end_time > 0 && logtime >= timeFromUs((uint32_t)end_time)){
         cout << "Logtime set to endtime" << endl;
@@ -937,11 +938,35 @@ int main(int argc, char **argv) {
             //uec_snk->set_priority(crt->priority);
                             
             for (uint32_t p = 0; p < planes; p++) {
+                if(topo[p]->HOSTSWITCH_ID(src) == topo[p]->HOSTSWITCH_ID(dest)){
+
+                            //same tor switch, no need to go up the topology
+                            Route* srctoswh = new Route();
+                            printf("\n Debug FatTreeSwitchSh::addHostPortPlus Addr %d Swh %d \n", src, topo[p]->HOSTSWITCH_ID(src));
+                            srctoswh->push_back(topo[p]->queues_nh_nhs[src][topo[p]->HOSTSWITCH_ID(src)][0]);
+                            srctoswh->push_back(topo[p]->pipes_nh_nhs[src][topo[p]->HOSTSWITCH_ID(src)][0]);
+                            srctoswh->push_back(topo[p]->queues_nh_nhs[src][topo[p]->HOSTSWITCH_ID(src)][0]->getRemoteEndpoint());
+
+                            Route* swhtodest = new Route();
+                            swhtodest->push_back(topo[p]->queues_nh_nhs[dest][topo[p]->HOSTSWITCH_ID(dest)][0]);
+                            swhtodest->push_back(topo[p]->pipes_nh_nhs[dest][topo[p]->HOSTSWITCH_ID(dest)][0]);
+                            swhtodest->push_back(topo[p]->queues_nh_nhs[dest][topo[p]->HOSTSWITCH_ID(dest)][0]->getRemoteEndpoint());
+
+
+                            uec_src->connectPort(p, *srctoswh, *swhtodest, *uec_snk, crt->start);
+                            
+                            //register src and snk to receive packets from their respective TORs. 
+                            assert(topo[p]->switches_host[topo[p]->HOSTSWITCH_ID(src)]);
+                            assert(topo[p]->switches_host[topo[p]->HOSTSWITCH_ID(src)]);
+                            ((FatTreeSwitchSh*)topo[p]->switches_host[topo[p]->HOSTSWITCH_ID(src)])->addHostPortPlus(src,uec_snk->flowId(),uec_src->getPort(p));
+                            ((FatTreeSwitchSh*)topo[p]->switches_host[topo[p]->HOSTSWITCH_ID(dest)])->addHostPortPlus(dest,uec_src->flowId(),uec_snk->getPort(p));
+                            break;
+                }
                 switch (route_strategy) {
                 case ECMP_FIB:
                 case ECMP_FIB_ECN:
                 case REACTIVE_ECN:
-                    {
+                    {   
                         Route* srctotor = new Route();
                         srctotor->push_back(topo[p]->queues_ns_nlp[src][topo_cfg->HOST_POD_SWITCH(src)][0]);
                         srctotor->push_back(topo[p]->pipes_ns_nlp[src][topo_cfg->HOST_POD_SWITCH(src)][0]);

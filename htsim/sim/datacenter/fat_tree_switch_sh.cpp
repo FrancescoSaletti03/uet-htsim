@@ -70,6 +70,18 @@ void FatTreeSwitchSh::addHostPort(int addr, int flowid, PacketSink* transport_po
     _fib->addHostRoute(addr,rt,flowid);
 }
 
+void FatTreeSwitchSh::addHostPortPlus(int addr, int flowid, PacketSink* transport_port){
+    BaseQueue* q = _ft->queues_nhs_nh[_ft->HOSTSWITCH_ID(addr)][addr][0];
+    Pipe* p = _ft->pipes_nhs_nh[_ft->HOSTSWITCH_ID(addr)][addr][0];
+
+    Route* rt = new Route();
+    rt->push_back(q);
+    rt->push_back(p);
+    rt->push_back(transport_port);
+    
+    _fib->addHostRoute(addr,rt,flowid);
+}
+
 uint32_t mhash(uint32_t x) {
     x = ((x >> 16) ^ x) * 0x45d9f3b;
     x = ((x >> 16) ^ x) * 0x45d9f3b;
@@ -326,6 +338,29 @@ uint16_t FatTreeSwitchSh::_trim_size = 64;
 bool FatTreeSwitchSh::_disable_trim = false;
 
 Route* FatTreeSwitchSh::getNextHop(Packet& pkt, BaseQueue* ingress_port){
+
+    //int dst = pkt.dst();
+    //int src = pkt.flow_id();
+
+    /* if (_ft->isOnSameEnhancedSwitch(src, dst)) {
+        Route* rt = new Route();
+
+        // host → switch
+        rt->push_back(_ft->queues_nh_nhs[src][_ft->HOSTSWITCH_ID(src)][0]);
+        rt->push_back(_ft->pipes_nh_nhs[src][_ft->HOSTSWITCH_ID(src)][0]);
+
+        // attraversa lo switch potenziato
+        rt->push_back(_ft->switches_host[_ft->HOSTSWITCH_ID(src)]);
+
+        // switch → host
+        rt->push_back(_ft->queues_nhs_nh[_ft->HOSTSWITCH_ID(dst)][dst][0]);
+        rt->push_back(_ft->pipes_nhs_nh[_ft->HOSTSWITCH_ID(dst)][dst][0]);
+
+        pkt.set_direction(DOWN);
+        return rt;
+    } */
+
+
     vector<FibEntry*> * available_hops = _fib->getRoutes(pkt.dst());
 
     if (available_hops){
@@ -460,7 +495,16 @@ Route* FatTreeSwitchSh::getNextHop(Packet& pkt, BaseQueue* ingress_port){
                 permute_paths(_uproutes);
             }
         }
-    } else if (_type == AGG) {
+    } else if (_type == SUPER){
+        //this host is directly connected!
+        HostFibEntry* fe = _fib->getHostRoute(pkt.dst(),pkt.flow_id());
+        assert(fe);
+        pkt.set_direction(DOWN);
+        return fe->getEgressPort();
+         
+
+    }
+    else if (_type == AGG) {
         if (_ft->cfg().get_tiers()==2 || _ft->cfg().HOST_POD(pkt.dst()) == _ft->cfg().AGG_SWITCH_POD_ID(_id)) {
             //must go down!
             //target NLP id is 2 * pkt.dst()/K

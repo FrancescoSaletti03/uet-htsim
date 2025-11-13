@@ -12,6 +12,7 @@
 #include "logfile.h"
 #include "eventlist.h"
 #include "switch.h"
+#include "uec.h"
 #include "fat_tree_switch_sh.h"
 #include <ostream>
 #include <memory>
@@ -246,6 +247,8 @@ public:
 
     vector<Switch*> switches_host;
 
+    vector<PacketSink*> host_transport_ports;
+
     // 3rd index is link number in bundle
     vector< vector< vector<Pipe*> > > pipes_nc_nup;
     vector< vector< vector<Pipe*> > > pipes_nup_nlp;
@@ -284,11 +287,15 @@ public:
 
     // add loggers to record total queue size at switches
     virtual void add_switch_loggers(Logfile& log, simtime_picosec sample_period); 
+    inline uint32_t HOSTSWITCH_ID(uint32_t host_id) const { return host_id / HOSTSWITCH_GPU_SIZE; }
+
+    bool isOnSameEnhancedSwitch(uint32_t src, uint32_t dst) const;
 
     const FatTreeTopologyCfgSh& cfg() { return *_cfg; };
 private:
     const FatTreeTopologyCfgSh* _cfg;
     map<Queue*,int> _link_usage;
+
     int64_t find_lp_switch(Queue* queue);
     int64_t find_up_switch(Queue* queue);
     int64_t find_core_switch(Queue* queue);
